@@ -1,0 +1,65 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Protect SIP credentials so only the authenticated owner can read or write.
+    match /sipProfiles/{docId} {
+      allow read, update, delete: if ownsSipProfile(docId);
+      allow create: if request.auth != null && (docId == request.auth.uid || request.resource.data.ownerId == request.auth.uid);
+    }
+
+    // Allow users to store public profile metadata.
+    match /users/{userId} {
+      allow read, write: if isOwner(userId);
+    }
+
+    // Allow users to fetch their call logs (read-only) if stored in Firestore.
+    match /users/{userId}/callLogs/{logId} {
+      allow read: if isOwner(userId);
+      allow create, update: if isOwner(userId);
+      allow delete: if false; // Restrict destructive operations to backend automation.
+    }
+
+    // Allow users to read Tech2Global event streams that are scoped to their user.
+    match /users/{userId}/eventLogs/{eventId} {
+      allow read: if isOwner(userId);
+      allow write: if false; // Restrict writes to backend automation or Tech2Global webhooks.
+    }
+
+    match /userDirectory/{hash} {
+      allow get: if true;
+      allow list: if false;
+      allow create, update: if request.auth != null && ownsDirectoryEntry();
+      allow delete: if false;
+    }
+
+    function ownsDirectoryEntry() {
+      if (request.auth == null) {
+        return false;
+      }
+
+      // Always require new documents to include an explicit owner reference.
+      if (resource == null) {
+        return request.resource != null && request.resource.data.userId == request.auth.uid;
+      }
+
+      // Permit updates when the existing document is already bound to the caller.
+      if (resource.data.keys().hasAny(['userId']) && resource.data.userId == request.auth.uid) {
+        return !request.resource.data.keys().hasAny(['userId']) || request.resource.data.userId == request.auth.uid;
+      }
+
+      // Fall back to legacy records that pre-date the userId field by matching on the stored email.
+      return resource.data.keys().hasAny(['email']) &&
+        resource.data.email == request.auth.token.email;
+    }
+
+    // Shared helper to validate document ownership.
+    function isOwner(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+
+    function ownsSipProfile(docId) {
+      return request.auth != null &&
+        (docId == request.auth.uid || (resource != null && resource.data.ownerId == request.auth.uid));
+    }
+  }
+}
