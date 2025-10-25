@@ -1,10 +1,18 @@
-import 'dotenv/config';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import dotenv from 'dotenv';
 import express from 'express';
 import cors from 'cors';
-import { twiml, jwt } from 'twilio';
+import pkg from 'twilio';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+dotenv.config({ path: path.join(__dirname, '.env') });
 
 const app = express();
 const port = process.env.PORT ?? 3001;
+const { twiml, jwt } = pkg;
 
 app.use(cors());
 app.use(express.json());
